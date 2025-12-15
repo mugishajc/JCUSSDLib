@@ -2,9 +2,9 @@
 
 <div align="center">
 
-![Android USSD Automation Architecture](https://github.com/user-attachments/assets/voip-ussd-architecture-diagram.png)
-
-![VoIP USSD Android](https://github.com/user-attachments/assets/voip-ussd-android-banner.png)
+<!-- Architecture diagrams - To be added -->
+<h2>📱 Android USSD Automation Library</h2>
+<p><i>VoIP USSD Approach: Bridging App & System UI via Accessibility Service</i></p>
 
 [![Platform](https://img.shields.io/badge/platform-Android-green.svg)](https://developer.android.com)
 [![API](https://img.shields.io/badge/API-23%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=23)
