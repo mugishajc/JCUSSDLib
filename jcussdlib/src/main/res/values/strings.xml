@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JCUSSDLib</string>
+    <string name="ussd_service_description">Service to handle USSD responses automatically</string>
+    <string name="loading_message">Processing USSD request...</string>
+</resources>
