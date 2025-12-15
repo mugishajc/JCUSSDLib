@@ -264,19 +264,193 @@ public interface USSDApi {
 - SIM slot indices may vary by manufacturer
 - Some devices use different APIs - test thoroughly
 
-## Architecture
+## Architecture Overview
+
+### Architecture Flow Diagram
 
 ```
-JCUSSDLib/
-├── USSDController       - Main API and business logic
-├── USSDApi             - Callback interface
-├── service/
-│   ├── USSDService     - Accessibility service for dialog interception
-│   └── SplashLoadingService - Foreground service for loading overlay
-└── res/
-    ├── layout/         - Loading overlay layout
-    └── xml/            - Accessibility service configuration
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Your Application                                  │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        MainActivity / Activity                        │  │
+│  │  • Implements USSDApi interface                                      │  │
+│  │  • Manages UI and user interactions                                  │  │
+│  └───────────────────────────┬──────────────────────────────────────────┘  │
+│                              │ calls methods                                │
+│                              ▼                                               │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                      USSDController (Singleton)                       │  │
+│  │  • callUSSDInvoke(ussdCode, simSlot)                                │  │
+│  │  • setUSSDApi(callback)                                             │  │
+│  │  • send(response)                                                    │  │
+│  │  • setMap(keywords)                                                  │  │
+│  └────────┬─────────────────────────────────────┬─────────────────────┘  │
+└───────────┼─────────────────────────────────────┼────────────────────────┘
+            │                                     │
+            │ ①                                   │ ⑤
+            │ Initiates USSD                     │ Receives parsed
+            │ via Intent                          │ response callbacks
+            ▼                                     │
+┌─────────────────────────────────────────────────┼────────────────────────┐
+│                    Android System                │                        │
+│  ┌──────────────────────────────────────────────┼─────────────────────┐  │
+│  │              Telephony Framework              │                     │  │
+│  │  • Handles USSD dialing (ACTION_CALL)        │                     │  │
+│  │  • Manages SIM card selection                │                     │  │
+│  │  • Routes to carrier network                 │                     │  │
+│  └────────────────────┬──────────────────────────┘                     │  │
+│                       │ ②                                              │  │
+│                       │ Displays USSD Dialog                           │  │
+│                       ▼                                                │  │
+│  ┌──────────────────────────────────────────────────────────────────┐ │  │
+│  │                   USSD System Dialog                             │ │  │
+│  │  • Shows response from carrier                                   │ │  │
+│  │  • Contains TextView with message                                │ │  │
+│  │  • May have EditText for input                                   │ │  │
+│  │  • Contains OK/Cancel/Send buttons                               │ │  │
+│  └────────────────────┬─────────────────────────────────────────────┘ │  │
+│                       │ ③                                              │  │
+│                       │ Accessibility Events                           │  │
+└───────────────────────┼────────────────────────────────────────────────┘
+                        │ (TYPE_WINDOW_STATE_CHANGED)
+                        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        JCUSSDLib Services                                │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │         USSDService (AccessibilityService)                        │  │
+│  │  • Monitors system windows via accessibility events              │  │
+│  │  • Extracts text content from USSD dialogs                       │  │
+│  │  • Identifies dialog type (response/input/end)                   │  │
+│  │  • Fills EditText fields programmatically                        │  │
+│  │  • Clicks buttons (Send/OK) automatically                        │  │
+│  └────────────────────┬─────────────────────────────────────────────┘  │
+│                       │ ④                                               │
+│                       │ Parsed USSD text                                │
+│                       ▼                                                 │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │              Response Processing Pipeline                         │  │
+│  │  • Match against KEY_LOGIN patterns → isLogin = true             │  │
+│  │  • Match against KEY_ERROR patterns → trigger over()             │  │
+│  │  • Trigger responseInvoke(message) callback                      │  │
+│  │  • Detect session end (OK/Cancel buttons)                        │  │
+│  └────────────────────┬─────────────────────────────────────────────┘  │
+│                       │                                                 │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │      SplashLoadingService (Foreground Service)                   │  │
+│  │  • Displays overlay widget during USSD operations                │  │
+│  │  • Shows loading animation and message                           │  │
+│  │  • Runs in foreground with notification (Android O+)             │  │
+│  │  • Auto-dismisses when session ends                              │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
+
 ```
+
+### Component Interaction Flow
+
+**Step-by-Step Process:**
+
+1. **Initiation Phase**
+   - User app calls `USSDController.callUSSDInvoke("*123#", simSlot)`
+   - Controller shows loading overlay via `SplashLoadingService`
+   - Sends `ACTION_CALL` intent with encoded USSD code to Android telephony
+
+2. **System Handling**
+   - Android Telephony Framework processes the USSD request
+   - Selects appropriate SIM card (if dual SIM)
+   - Sends USSD code to carrier network
+   - Receives response and displays system USSD dialog
+
+3. **Dialog Interception**
+   - `USSDService` (AccessibilityService) detects window state change
+   - Captures accessibility events from USSD dialog
+   - Extracts text content from TextView components
+   - Identifies dialog buttons (OK, Cancel, Send)
+
+4. **Response Processing**
+   - Extracted text is sent to `USSDController.processResponse()`
+   - Matches text against configured keyword patterns:
+     - `KEY_LOGIN`: Success indicators → sets `isLogin = true`
+     - `KEY_ERROR`: Error indicators → calls `over(message)` and exits
+   - Triggers `responseInvoke(message)` callback to user app
+
+5. **Callback Execution**
+   - User app receives response in `responseInvoke()`
+   - Can analyze response and send follow-up via `send(response)`
+   - `USSDService` fills EditText and clicks Send button if needed
+   - Loop continues for menu navigation
+
+6. **Session Termination**
+   - Detects OK/Cancel button (indicates session end)
+   - Clicks back button to dismiss dialog
+   - Calls `over(message)` callback
+   - Hides loading overlay
+   - Resets controller state
+
+### Key Architectural Decisions
+
+**⚡ Accessibility Service Pattern**
+- Uses Android's AccessibilityService API to intercept system dialogs
+- No root access required
+- Works across different Android versions and manufacturers
+- Requires explicit user permission for accessibility
+
+**🔄 Singleton Controller**
+- `USSDController` uses singleton pattern for centralized state management
+- Prevents multiple concurrent USSD sessions
+- Maintains session state (running, login status)
+
+**📱 Device Compatibility**
+- USSD dialog structure varies by manufacturer (Samsung, Xiaomi, etc.)
+- Uses generic node traversal to extract text content
+- Handles multiple dialog formats automatically
+
+**⏱️ Timeout Management**
+- 30-second timeout for USSD operations
+- Automatic cleanup and callback if no response received
+
+**🎯 Callback-Based Architecture**
+- Asynchronous response handling via `USSDApi` interface
+- Thread-safe callback invocation
+- Supports sequential menu navigation
+
+### Module Structure
+
+```
+jcussdlib/
+├── src/main/
+│   ├── java/com/jcussdlib/
+│   │   ├── USSDController.java          // Main controller & business logic
+│   │   ├── USSDApi.java                 // Callback interface definition
+│   │   └── service/
+│   │       ├── USSDService.java         // Accessibility service implementation
+│   │       └── SplashLoadingService.java // Loading overlay service
+│   ├── res/
+│   │   ├── layout/
+│   │   │   └── loading_overlay.xml      // Overlay widget layout
+│   │   ├── values/
+│   │   │   ├── strings.xml              // String resources
+│   │   │   └── colors.xml               // Color definitions
+│   │   └── xml/
+│   │       └── ussd_service.xml         // Accessibility service config
+│   └── AndroidManifest.xml              // Service declarations & permissions
+└── build.gradle                         // Module dependencies
+```
+
+### System Requirements & Limitations
+
+**✅ Supported**
+- Android 6.0 (API 23) and above
+- Dual SIM devices (Android M+)
+- All major manufacturers (Samsung, Xiaomi, Oppo, etc.)
+- Multi-step USSD menu navigation
+
+**⚠️ Limitations**
+- Requires accessibility service permission (user must enable manually)
+- Requires overlay permission for visual feedback (Android M+)
+- USSD dialog appearance varies by manufacturer
+- Some carriers may block automated USSD access
+- Cannot run multiple concurrent USSD sessions
 
 ## License
 
