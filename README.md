@@ -1,6 +1,37 @@
 # JCUSSDLib
 
+<div align="center">
+
+![Android USSD Automation Architecture](https://github.com/user-attachments/assets/voip-ussd-architecture-diagram.png)
+
+![VoIP USSD Android](https://github.com/user-attachments/assets/voip-ussd-android-banner.png)
+
+[![Platform](https://img.shields.io/badge/platform-Android-green.svg)](https://developer.android.com)
+[![API](https://img.shields.io/badge/API-23%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=23)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub](https://img.shields.io/badge/GitHub-mugishajc-181717?logo=github)](https://github.com/mugishajc)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Mugisha%20Jean%20Claude-0077B5?logo=linkedin)](https://www.linkedin.com/in/mugisha-jean-claude/)
+
+</div>
+
+---
+
 A powerful Android library for automating USSD (Unstructured Supplementary Service Data) interactions. JCUSSDLib enables your application to programmatically send USSD requests and handle responses without manual user intervention.
+
+## Author
+
+**Mugisha Jean Claude**
+- GitHub: [@mugishajc](https://github.com/mugishajc)
+- LinkedIn: [Mugisha Jean Claude](https://www.linkedin.com/in/mugisha-jean-claude/)
+- Repository: [JCUSSDLib](https://github.com/mugishajc/JCUSSDLib)
+
+## Support the Project
+
+If you find JCUSSDLib helpful, consider supporting its development:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg?logo=paypal)](https://www.paypal.com/donate/?hosted_button_id=U8JW9CARMJS22)
+
+Your support helps maintain and improve this library! ☕
 
 ## Features
 
