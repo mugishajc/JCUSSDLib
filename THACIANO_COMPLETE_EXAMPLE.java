@@ -103,10 +103,6 @@ public class ThacianoOTPMatcherActivity extends AppCompatActivity {
             phoneList.set(i, phoneList.get(i).trim());
         }
 
-        // Generate ALL 4-digit OTPs: 0001, 0002, 0003, ..., 9999
-        List<String> allOTPs = OTPGenerator.generateAll(4);
-
-        Log.d(TAG, "Generated " + allOTPs.size() + " OTPs (0001-9999)");
         Log.d(TAG, "Processing " + phoneList.size() + " phones");
 
         // Show estimated time
@@ -130,8 +126,11 @@ public class ThacianoOTPMatcherActivity extends AppCompatActivity {
         btnStop.setEnabled(true);
         tvResults.setText("");
 
-        // Start brute-force matching
-        matcher.startMatching(phoneList, allOTPs, new OTPBruteForceMatcher.MatchingCallback() {
+        // ========================================================================
+        // SIMPLE API - Just pass phone list!
+        // Library automatically generates ALL OTPs (0001-9999) internally
+        // ========================================================================
+        matcher.startMatching(phoneList, new OTPBruteForceMatcher.MatchingCallback() {
 
             @Override
             public void onMatchingStarted(int totalPhones, int totalOTPs) {
