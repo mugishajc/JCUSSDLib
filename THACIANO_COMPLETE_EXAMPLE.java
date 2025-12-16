@@ -1,6 +1,7 @@
 package com.thaciano.app;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
