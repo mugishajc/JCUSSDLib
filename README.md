@@ -60,7 +60,30 @@ The library requires the following permissions:
 
 ## Installation
 
-### Step 1: Add the library module to your project
+### Option 1: Install via JitPack (Recommended)
+
+Add JitPack repository to your project's `settings.gradle`:
+
+```gradle
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }  // Add this line
+    }
+}
+```
+
+Add the dependency in your app's `build.gradle`:
+
+```gradle
+dependencies {
+    implementation 'com.github.mugishajc:JCUSSDLib:2.0.0'
+}
+```
+
+### Option 2: Add the library module to your project
 
 1. Copy the `jcussdlib` folder into your project
 2. Add it to your `settings.gradle`:
@@ -77,7 +100,7 @@ dependencies {
 }
 ```
 
-### Step 2: Update AndroidManifest
+### AndroidManifest
 
 The library's services are automatically merged into your app's manifest. No additional configuration needed.
 
