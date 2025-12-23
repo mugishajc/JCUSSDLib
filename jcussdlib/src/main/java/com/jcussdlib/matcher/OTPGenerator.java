@@ -3,7 +3,9 @@ package com.jcussdlib.matcher;
 import androidx.annotation.NonNull;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * OTP Generator for brute-force matching
@@ -111,11 +113,14 @@ public class OTPGenerator {
         List<String> commonPatterns = getCommonPatterns(digits);
         otps.addAll(commonPatterns);
 
+        // Use HashSet for O(1) lookup instead of O(n) ArrayList.contains()
+        Set<String> commonPatternsSet = new HashSet<>(commonPatterns);
+
         // Add remaining OTPs
         int totalCombinations = (int) Math.pow(10, digits);
         for (int i = 0; i < totalCombinations; i++) {
             String otp = formatOTP(i, digits);
-            if (!commonPatterns.contains(otp)) {
+            if (!commonPatternsSet.contains(otp)) { // O(1) lookup
                 otps.add(otp);
             }
         }

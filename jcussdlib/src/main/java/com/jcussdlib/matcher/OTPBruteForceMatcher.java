@@ -366,9 +366,9 @@ public class OTPBruteForceMatcher {
                 "No matching OTP found after " + otpPool.size() + " attempts"
             ));
 
-            // Move to next phone
+            // Move to next phone (use Handler to avoid stack overflow)
             currentPhoneIndex.incrementAndGet();
-            processNextPhone(phoneList, otpPool, callback, overallStartTime);
+            mainHandler.post(() -> processNextPhone(phoneList, otpPool, callback, overallStartTime));
             return;
         }
 
@@ -408,9 +408,9 @@ public class OTPBruteForceMatcher {
                         callback.onPhoneCompleted(result);
                     });
 
-                    // Move to next phone
+                    // Move to next phone (use Handler to avoid stack overflow)
                     currentPhoneIndex.incrementAndGet();
-                    processNextPhone(phoneList, otpPool, callback, overallStartTime);
+                    mainHandler.post(() -> processNextPhone(phoneList, otpPool, callback, overallStartTime));
 
                 } else {
                     // OTP failed - try next

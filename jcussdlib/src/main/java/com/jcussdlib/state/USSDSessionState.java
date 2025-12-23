@@ -24,9 +24,8 @@ import java.util.Map;
  * - Error history
  * </p>
  *
- * <p>Thread Safety: This class is NOT thread-safe. It's designed to be used
- * by a single executor thread. External synchronization required if accessed
- * from multiple threads.</p>
+ * <p>Thread Safety: This class is now thread-safe with internal synchronization.
+ * All state-modifying operations are synchronized to ensure safe concurrent access.</p>
  *
  * <p>Example usage:</p>
  * <pre>
@@ -99,7 +98,7 @@ public class USSDSessionState {
     /**
      * Marks the session as started
      */
-    public void startExecution() {
+    public synchronized void startExecution() {
         if (status != Status.IDLE) {
             throw new IllegalStateException("Cannot start execution in status: " + status);
         }
@@ -111,7 +110,7 @@ public class USSDSessionState {
     /**
      * Marks the session as completed successfully
      */
-    public void completeExecution() {
+    public synchronized void completeExecution() {
         if (status != Status.RUNNING) {
             throw new IllegalStateException("Cannot complete execution in status: " + status);
         }
@@ -125,7 +124,7 @@ public class USSDSessionState {
      * @param error Error message
      * @param atStep Step number where failure occurred (1-indexed), 0 if not step-specific
      */
-    public void failExecution(@NonNull String error, int atStep) {
+    public synchronized void failExecution(@NonNull String error, int atStep) {
         this.status = Status.FAILED;
         this.lastError = error;
         this.failedAtStep = atStep;
@@ -135,7 +134,7 @@ public class USSDSessionState {
     /**
      * Pauses the execution
      */
-    public void pauseExecution() {
+    public synchronized void pauseExecution() {
         if (status != Status.RUNNING) {
             throw new IllegalStateException("Cannot pause execution in status: " + status);
         }
@@ -145,7 +144,7 @@ public class USSDSessionState {
     /**
      * Resumes paused execution
      */
-    public void resumeExecution() {
+    public synchronized void resumeExecution() {
         if (status != Status.PAUSED) {
             throw new IllegalStateException("Cannot resume execution in status: " + status);
         }
@@ -155,7 +154,7 @@ public class USSDSessionState {
     /**
      * Cancels the execution
      */
-    public void cancelExecution() {
+    public synchronized void cancelExecution() {
         this.status = Status.CANCELLED;
         this.sessionEndTime = System.currentTimeMillis();
     }
@@ -169,7 +168,7 @@ public class USSDSessionState {
      *
      * @param stepNumber Step number (1-indexed)
      */
-    public void startStep(int stepNumber) {
+    public synchronized void startStep(int stepNumber) {
         if (status != Status.RUNNING) {
             throw new IllegalStateException("Cannot start step in status: " + status);
         }
@@ -199,7 +198,7 @@ public class USSDSessionState {
      * @param stepNumber Step number (1-indexed)
      * @param response   The response received
      */
-    public void recordResponse(int stepNumber, @NonNull String response) {
+    public synchronized void recordResponse(int stepNumber, @NonNull String response) {
         responses.add(response);
 
         int index = stepNumber - 1;
@@ -214,7 +213,7 @@ public class USSDSessionState {
      * @param stepNumber Step number (1-indexed)
      * @param durationMs Duration in milliseconds
      */
-    public void completeStep(int stepNumber, long durationMs) {
+    public synchronized void completeStep(int stepNumber, long durationMs) {
         int index = stepNumber - 1;
         if (index >= 0 && index < stepRecords.size()) {
             StepExecutionRecord record = stepRecords.get(index);
@@ -234,7 +233,7 @@ public class USSDSessionState {
      *
      * @param stepNumber Step number (1-indexed)
      */
-    public void recordRetry(int stepNumber) {
+    public synchronized void recordRetry(int stepNumber) {
         int retries = stepRetryCount.getOrDefault(stepNumber, 0);
         stepRetryCount.put(stepNumber, retries + 1);
 
@@ -250,7 +249,7 @@ public class USSDSessionState {
      * @param key   Data key (e.g., "otp", "balance")
      * @param value Data value
      */
-    public void recordExtractedData(@NonNull String key, @NonNull String value) {
+    public synchronized void recordExtractedData(@NonNull String key, @NonNull String value) {
         extractedData.put(key, value);
     }
 

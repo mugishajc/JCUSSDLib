@@ -26,6 +26,7 @@ public class USSDController {
     private USSDApi ussdApi;
     private boolean isRunning = false;
     private boolean isLogin = false;
+    private long timeoutMillis = 30000; // Default 30 seconds, now configurable
 
     private USSDController(Context context) {
         this.context = context.getApplicationContext();
@@ -61,6 +62,25 @@ public class USSDController {
     }
 
     /**
+     * Set USSD timeout duration
+     * @param timeoutMillis Timeout in milliseconds (must be > 0)
+     */
+    public void setTimeout(long timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("Timeout must be greater than 0");
+        }
+        this.timeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Get current timeout setting
+     * @return Timeout in milliseconds
+     */
+    public long getTimeout() {
+        return timeoutMillis;
+    }
+
+    /**
      * Call USSD code
      * @param ussdCode USSD code to dial (e.g., "*123#")
      * @param simSlot SIM slot to use (0 or 1), use -1 for default
@@ -84,7 +104,7 @@ public class USSDController {
             callUSSDDefault(ussdCode);
         }
 
-        // Set timeout
+        // Set timeout (now configurable)
         new Handler().postDelayed(() -> {
             if (isRunning) {
                 stopLoading();
@@ -93,7 +113,7 @@ public class USSDController {
                     ussdApi.over("Timeout");
                 }
             }
-        }, 30000);
+        }, timeoutMillis);
     }
 
     /**

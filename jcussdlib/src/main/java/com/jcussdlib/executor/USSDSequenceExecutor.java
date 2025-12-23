@@ -90,10 +90,13 @@ public class USSDSequenceExecutor {
     private final AtomicBoolean isCancelled;
     private final AtomicInteger currentRetryCount;
 
-    // Current step tracking
-    private volatile int currentStepNumber;
+    // Current step tracking (using AtomicInteger for thread-safe updates)
+    private final AtomicInteger currentStepNumber;
     private volatile String lastResponse;
     private volatile long stepStartTime;
+
+    // Synchronization lock for step operations
+    private final Object stepLock = new Object();
 
     /**
      * Interface for USSD control operations
@@ -163,8 +166,7 @@ public class USSDSequenceExecutor {
         this.isPaused = new AtomicBoolean(false);
         this.isCancelled = new AtomicBoolean(false);
         this.currentRetryCount = new AtomicInteger(0);
-
-        this.currentStepNumber = 0;
+        this.currentStepNumber = new AtomicInteger(0);
     }
 
     // ========================================================================================
@@ -202,7 +204,7 @@ public class USSDSequenceExecutor {
 
         isPaused.set(true);
         sessionState.pauseExecution();
-        notifySequencePaused(currentStepNumber);
+        notifySequencePaused(currentStepNumber.get());
     }
 
     /**
@@ -216,7 +218,7 @@ public class USSDSequenceExecutor {
 
         isPaused.set(false);
         sessionState.resumeExecution();
-        notifySequenceResumed(currentStepNumber);
+        notifySequenceResumed(currentStepNumber.get());
 
         // Continue execution
         synchronized (isPaused) {
@@ -231,7 +233,7 @@ public class USSDSequenceExecutor {
         isCancelled.set(true);
         sessionState.cancelExecution();
         controller.cancelUSSD();
-        notifySequenceCancelled(currentStepNumber);
+        notifySequenceCancelled(currentStepNumber.get());
 
         if (executionFuture != null && !executionFuture.isDone()) {
             executionFuture.cancel(true);
@@ -286,11 +288,11 @@ public class USSDSequenceExecutor {
                 // Handle pause
                 waitIfPaused();
 
-                currentStepNumber = i + 1;
+                currentStepNumber.set(i + 1);
                 USSDStep step = sequence.getStep(i);
 
                 if (step == null) {
-                    notifySequenceFailed("Step " + currentStepNumber + " is null", currentStepNumber);
+                    notifySequenceFailed("Step " + currentStepNumber.get() + " is null", currentStepNumber.get());
                     return;
                 }
 
@@ -299,10 +301,10 @@ public class USSDSequenceExecutor {
 
                 if (!success) {
                     if (sequence.shouldStopOnError()) {
-                        notifySequenceFailed("Step " + currentStepNumber + " failed", currentStepNumber);
+                        notifySequenceFailed("Step " + currentStepNumber.get() + " failed", currentStepNumber.get());
                         return;
                     } else {
-                        Log.w(TAG, "Step " + currentStepNumber + " failed but continuing (stopOnError=false)");
+                        Log.w(TAG, "Step " + currentStepNumber.get() + " failed but continuing (stopOnError=false)");
                     }
                 }
 
@@ -323,8 +325,8 @@ public class USSDSequenceExecutor {
 
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error in sequence execution", e);
-            sessionState.failExecution("Unexpected error: " + e.getMessage(), currentStepNumber);
-            notifySequenceFailed("Unexpected error: " + e.getMessage(), currentStepNumber);
+            sessionState.failExecution("Unexpected error: " + e.getMessage(), currentStepNumber.get());
+            notifySequenceFailed("Unexpected error: " + e.getMessage(), currentStepNumber.get());
         }
     }
 
@@ -717,6 +719,6 @@ public class USSDSequenceExecutor {
     }
 
     public int getCurrentStepNumber() {
-        return currentStepNumber;
+        return currentStepNumber.get();
     }
 }

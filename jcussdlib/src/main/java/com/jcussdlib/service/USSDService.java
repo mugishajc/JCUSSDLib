@@ -213,7 +213,7 @@ public class USSDService extends AccessibilityService {
      * Find node by class name
      * @param node Root node
      * @param className Class name to find
-     * @return Found node or null
+     * @return Found node or null (caller must recycle)
      */
     private AccessibilityNodeInfo findNodeByClass(AccessibilityNodeInfo node, String className) {
         if (node == null) {
@@ -228,10 +228,10 @@ public class USSDService extends AccessibilityService {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 AccessibilityNodeInfo found = findNodeByClass(child, className);
+                child.recycle(); // Always recycle child after use
                 if (found != null) {
-                    return found;
+                    return found; // Found node must be recycled by caller
                 }
-                child.recycle();
             }
         }
 
@@ -242,7 +242,7 @@ public class USSDService extends AccessibilityService {
      * Find node by text content
      * @param node Root node
      * @param text Text to find
-     * @return Found node or null
+     * @return Found node or null (caller must recycle)
      */
     private AccessibilityNodeInfo findNodeByText(AccessibilityNodeInfo node, String text) {
         if (node == null) {
@@ -258,10 +258,10 @@ public class USSDService extends AccessibilityService {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 AccessibilityNodeInfo found = findNodeByText(child, text);
+                child.recycle(); // Always recycle child after use
                 if (found != null) {
-                    return found;
+                    return found; // Found node must be recycled by caller
                 }
-                child.recycle();
             }
         }
 
