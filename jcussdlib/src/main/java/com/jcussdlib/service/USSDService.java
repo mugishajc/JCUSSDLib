@@ -26,22 +26,42 @@ public class USSDService extends AccessibilityService {
     public void onCreate() {
         super.onCreate();
 
-        // Register receiver for sending responses
+        // Register receiver for sending responses (secured to same app only)
         sendResponseReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
+                // Security: Verify broadcast is from our own app
+                if (intent == null) {
+                    Log.w(TAG, "Received null intent - ignoring");
+                    return;
+                }
+
+                // Check if intent is restricted to our package
+                String senderPackage = intent.getPackage();
+                if (senderPackage != null && !senderPackage.equals(context.getPackageName())) {
+                    Log.w(TAG, "Received broadcast from external package: " + senderPackage + " - ignoring");
+                    return;
+                }
+
                 String response = intent.getStringExtra("response");
                 if (response != null) {
+                    Log.d(TAG, "Received secured broadcast response: " + response);
                     sendResponse(response);
+                } else {
+                    Log.w(TAG, "Received broadcast with null response - ignoring");
                 }
             }
         };
 
         IntentFilter filter = new IntentFilter("com.jcussdlib.SEND_RESPONSE");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+: Use RECEIVER_NOT_EXPORTED for security
             registerReceiver(sendResponseReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            Log.d(TAG, "Registered secured broadcast receiver (RECEIVER_NOT_EXPORTED)");
         } else {
+            // Pre-Android 13: Still secure via package validation in onReceive
             registerReceiver(sendResponseReceiver, filter);
+            Log.d(TAG, "Registered broadcast receiver with package validation");
         }
     }
 

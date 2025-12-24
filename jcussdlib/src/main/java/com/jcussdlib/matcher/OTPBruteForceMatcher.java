@@ -1,11 +1,16 @@
 package com.jcussdlib.matcher;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 
 import com.jcussdlib.callback.USSDSequenceCallback;
 import com.jcussdlib.controller.USSDController;
@@ -245,6 +250,8 @@ public class OTPBruteForceMatcher {
      * @param phoneList  List of phone numbers to process
      * @param otpDigits  Number of OTP digits (e.g., 4 for 0001-9999, 6 for 000001-999999)
      * @param callback   Progress and result callback
+     * @throws SecurityException if required permissions are not granted
+     * @throws IllegalStateException if accessibility service is not enabled
      */
     public void startMatching(@NonNull List<String> phoneList,
                              int otpDigits,
@@ -259,6 +266,9 @@ public class OTPBruteForceMatcher {
         if (callback == null) {
             throw new IllegalArgumentException("Callback cannot be null");
         }
+
+        // ===== PERMISSION VERIFICATION =====
+        verifyPermissions();
 
         // Generate ALL OTPs internally - app doesn't need to provide them!
         List<String> otpPool = OTPGenerator.generateAll(otpDigits);
@@ -306,6 +316,18 @@ public class OTPBruteForceMatcher {
 
         if (!isProcessing.get()) {
             Log.d(TAG, "Processing stopped by user");
+            return;
+        }
+
+        // Health check: Verify accessibility service is still enabled
+        if (!healthCheckAccessibilityService()) {
+            Log.e(TAG, "Stopping matching - accessibility service is not available");
+            isProcessing.set(false);
+            mainHandler.post(() -> callback.onAllPhonesCompleted(
+                new HashMap<>(phoneOTPMatches),
+                new ArrayList<>(unmatchedPhones),
+                System.currentTimeMillis() - overallStartTime
+            ));
             return;
         }
 
@@ -640,5 +662,148 @@ public class OTPBruteForceMatcher {
         phoneOTPMatches.clear();
         unmatchedPhones.clear();
         controller.cleanup();
+    }
+
+    /**
+     * Performs health check on accessibility service
+     * <p>
+     * Call this periodically during long-running operations to detect if
+     * accessibility service has been disabled or crashed.
+     * </p>
+     *
+     * @return true if service is healthy and enabled
+     */
+    public boolean healthCheckAccessibilityService() {
+        if (!isAccessibilityServiceEnabled()) {
+            Log.e(TAG, "❌ HEALTH CHECK FAILED: Accessibility service is no longer enabled!");
+            Log.e(TAG, "The service may have been disabled or crashed. OTP detection will not work.");
+            return false;
+        }
+        Log.d(TAG, "✓ Health check passed: Accessibility service is running");
+        return true;
+    }
+
+    // ========================================================================================
+    // PERMISSION VERIFICATION (Senior-Level Safety)
+    // ========================================================================================
+
+    /**
+     * Verifies all required permissions are granted before starting
+     *
+     * @throws SecurityException if required permissions are missing
+     * @throws IllegalStateException if accessibility service is not enabled
+     */
+    private void verifyPermissions() {
+        List<String> missingPermissions = new ArrayList<>();
+
+        // Check CALL_PHONE permission
+        if (!hasCallPhonePermission()) {
+            missingPermissions.add("CALL_PHONE");
+        }
+
+        // Check SYSTEM_ALERT_WINDOW permission (for overlay)
+        if (!hasOverlayPermission()) {
+            missingPermissions.add("SYSTEM_ALERT_WINDOW");
+        }
+
+        // Check accessibility service
+        if (!isAccessibilityServiceEnabled()) {
+            throw new IllegalStateException(
+                "Accessibility service is not enabled!\n" +
+                "Please enable: Settings → Accessibility → " + context.getPackageName() + "/USSDService\n" +
+                "This is REQUIRED for automatic USSD response detection."
+            );
+        }
+
+        if (!missingPermissions.isEmpty()) {
+            throw new SecurityException(
+                "Missing required permissions: " + missingPermissions + "\n" +
+                "Please grant these permissions before starting OTP matching.\n" +
+                "Add to AndroidManifest.xml:\n" +
+                "  <uses-permission android:name=\"android.permission.CALL_PHONE\" />\n" +
+                "  <uses-permission android:name=\"android.permission.SYSTEM_ALERT_WINDOW\" />\n" +
+                "And request at runtime using ActivityCompat.requestPermissions()"
+            );
+        }
+
+        Log.d(TAG, "✓ All permissions verified - ready to start");
+    }
+
+    /**
+     * Checks if CALL_PHONE permission is granted
+     *
+     * @return true if granted
+     */
+    private boolean hasCallPhonePermission() {
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Checks if SYSTEM_ALERT_WINDOW permission is granted
+     *
+     * @return true if granted
+     */
+    private boolean hasOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return Settings.canDrawOverlays(context);
+        }
+        return true; // Not required on pre-M devices
+    }
+
+    /**
+     * Checks if accessibility service is enabled
+     *
+     * @return true if enabled
+     */
+    private boolean isAccessibilityServiceEnabled() {
+        String service = context.getPackageName() + "/com.jcussdlib.service.USSDService";
+        try {
+            int accessibilityEnabled = Settings.Secure.getInt(
+                context.getContentResolver(),
+                Settings.Secure.ACCESSIBILITY_ENABLED
+            );
+            if (accessibilityEnabled == 1) {
+                String settingValue = Settings.Secure.getString(
+                    context.getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                );
+                if (settingValue != null) {
+                    return settingValue.contains(service);
+                }
+            }
+        } catch (Settings.SettingNotFoundException e) {
+            Log.e(TAG, "Error checking accessibility service", e);
+        }
+        return false;
+    }
+
+    /**
+     * Public method to check if all permissions are granted (for app UI)
+     *
+     * @return true if all permissions granted and accessibility enabled
+     */
+    public boolean hasAllRequiredPermissions() {
+        return hasCallPhonePermission() && hasOverlayPermission() && isAccessibilityServiceEnabled();
+    }
+
+    /**
+     * Gets list of missing permissions (for app UI to show user)
+     *
+     * @return List of missing permission names
+     */
+    @NonNull
+    public List<String> getMissingPermissions() {
+        List<String> missing = new ArrayList<>();
+        if (!hasCallPhonePermission()) {
+            missing.add("CALL_PHONE - Required to dial USSD codes");
+        }
+        if (!hasOverlayPermission()) {
+            missing.add("SYSTEM_ALERT_WINDOW - Required for loading overlay");
+        }
+        if (!isAccessibilityServiceEnabled()) {
+            missing.add("Accessibility Service - Required to read USSD responses");
+        }
+        return missing;
     }
 }

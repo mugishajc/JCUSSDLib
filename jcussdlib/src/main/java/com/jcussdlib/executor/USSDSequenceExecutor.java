@@ -15,12 +15,14 @@ import com.jcussdlib.state.USSDSessionState;
 import com.jcussdlib.validation.ResponseValidator;
 
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Core execution engine for USSD sequence automation.
@@ -97,6 +99,10 @@ public class USSDSequenceExecutor {
 
     // Synchronization lock for step operations
     private final Object stepLock = new Object();
+
+    // Response waiting mechanism (for v2.0 Sequential Engine)
+    private volatile CountDownLatch responseLatch;
+    private final AtomicReference<String> pendingResponse = new AtomicReference<>();
 
     /**
      * Interface for USSD control operations
@@ -520,26 +526,72 @@ public class USSDSequenceExecutor {
     }
 
     /**
-     * Waits for USSD response
-     * In real implementation, this would be triggered by accessibility service
-     * For now, it's a placeholder that needs to be implemented
+     * Waits for USSD response from accessibility service
+     * <p>
+     * Uses CountDownLatch to wait for response from USSDService.
+     * The response is set via onUSSDResponseReceived() callback from accessibility service.
+     * </p>
+     *
+     * @param timeoutMs Maximum time to wait for response in milliseconds
+     * @return USSD response text, or null if timeout
      */
     private String waitForUSSDResponse(long timeoutMs) {
-        // TODO: This needs to be connected to the accessibility service
-        // that captures USSD dialog text
-        //
-        // For now, return null to simulate timeout
-        // Real implementation would:
-        // 1. Register listener for USSD dialog events
-        // 2. Wait for event or timeout
-        // 3. Return dialog text or null if timeout
-
         Log.d(TAG, "Waiting for USSD response (timeout: " + timeoutMs + "ms)");
 
-        // Placeholder: In production, this would be event-driven
-        sleepSafely(timeoutMs);
+        // Create new latch for this response
+        responseLatch = new CountDownLatch(1);
+        pendingResponse.set(null);
 
-        return lastResponse; // TODO: Replace with actual response from accessibility service
+        try {
+            // Wait for response or timeout
+            boolean received = responseLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
+
+            if (received) {
+                String response = pendingResponse.get();
+                Log.d(TAG, "✓ Received USSD response: " + response);
+                return response;
+            } else {
+                Log.w(TAG, "✗ Timeout waiting for USSD response after " + timeoutMs + "ms");
+                return null;
+            }
+        } catch (InterruptedException e) {
+            Log.e(TAG, "Interrupted while waiting for USSD response", e);
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            responseLatch = null;
+        }
+    }
+
+    /**
+     * Called by USSDService when a USSD response is received
+     * <p>
+     * This method should be called from the accessibility service when it detects
+     * a USSD dialog with response text.
+     * </p>
+     *
+     * @param response The USSD response text
+     */
+    public void onUSSDResponseReceived(@NonNull String response) {
+        if (response == null) {
+            Log.w(TAG, "Received null USSD response - ignoring");
+            return;
+        }
+
+        Log.d(TAG, "USSDService reported response: " + response);
+
+        // Store response
+        pendingResponse.set(response);
+        lastResponse = response;
+
+        // Signal waiting thread
+        CountDownLatch latch = responseLatch;
+        if (latch != null) {
+            latch.countDown();
+            Log.d(TAG, "✓ Response latch released");
+        } else {
+            Log.w(TAG, "No latch waiting for response - response may be unexpected");
+        }
     }
 
     /**

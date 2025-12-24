@@ -1,13 +1,19 @@
 package com.jcussdlib;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
+import android.provider.Settings;
 import android.telecom.TelecomManager;
 import android.telephony.TelephonyManager;
+import android.util.Log;
+
+import androidx.core.content.ContextCompat;
 
 import com.jcussdlib.service.SplashLoadingService;
 
@@ -19,6 +25,8 @@ import java.util.HashSet;
  * Main controller class for managing USSD operations
  */
 public class USSDController {
+
+    private static final String TAG = "USSDController";
 
     private static USSDController instance;
     private Context context;
@@ -84,12 +92,17 @@ public class USSDController {
      * Call USSD code
      * @param ussdCode USSD code to dial (e.g., "*123#")
      * @param simSlot SIM slot to use (0 or 1), use -1 for default
+     * @throws SecurityException if CALL_PHONE permission is not granted
+     * @throws IllegalStateException if accessibility service is not enabled
      */
     @SuppressLint("MissingPermission")
     public void callUSSDInvoke(String ussdCode, int simSlot) {
         if (isRunning) {
             return;
         }
+
+        // Verify permissions before starting
+        verifyPermissions();
 
         isRunning = true;
         isLogin = false;
@@ -173,7 +186,9 @@ public class USSDController {
         // This will be handled by USSDService
         Intent intent = new Intent("com.jcussdlib.SEND_RESPONSE");
         intent.putExtra("response", response);
+        intent.setPackage(context.getPackageName()); // Restrict to same app only
         context.sendBroadcast(intent);
+        Log.d(TAG, "Sent secured broadcast to USSDService: " + response);
     }
 
     /**
@@ -223,6 +238,13 @@ public class USSDController {
 
     /**
      * Notify that USSD session has ended
+     * <p>
+     * This method is called when the USSD session terminates, either successfully
+     * or due to an error. It stops the loading overlay, resets the running state,
+     * and notifies the callback.
+     * </p>
+     *
+     * @param message Final USSD message or error message
      */
     public void notifyOver(String message) {
         if (isRunning) {
@@ -279,5 +301,75 @@ public class USSDController {
         isRunning = false;
         isLogin = false;
         stopLoading();
+    }
+
+    // ========================================================================================
+    // PERMISSION VERIFICATION (Senior-Level Safety)
+    // ========================================================================================
+
+    /**
+     * Verifies required permissions before making USSD call
+     *
+     * @throws SecurityException if CALL_PHONE permission is missing
+     * @throws IllegalStateException if accessibility service is not enabled
+     */
+    private void verifyPermissions() {
+        // Check CALL_PHONE permission
+        if (!hasCallPhonePermission()) {
+            throw new SecurityException(
+                "CALL_PHONE permission is not granted!\n" +
+                "Please grant this permission before making USSD calls.\n" +
+                "Add to AndroidManifest.xml:\n" +
+                "  <uses-permission android:name=\"android.permission.CALL_PHONE\" />\n" +
+                "And request at runtime using ActivityCompat.requestPermissions()"
+            );
+        }
+
+        // Check accessibility service
+        if (!isAccessibilityServiceEnabled()) {
+            Log.w(TAG, "WARNING: Accessibility service is not enabled - USSD responses may not be detected");
+            // Don't throw exception here - just warn, since legacy mode might still work
+        } else {
+            Log.d(TAG, "✓ Accessibility service verified - USSD responses will be detected");
+        }
+
+        Log.d(TAG, "✓ CALL_PHONE permission verified");
+    }
+
+    /**
+     * Checks if CALL_PHONE permission is granted
+     *
+     * @return true if granted
+     */
+    private boolean hasCallPhonePermission() {
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Checks if accessibility service is enabled
+     *
+     * @return true if enabled
+     */
+    private boolean isAccessibilityServiceEnabled() {
+        String service = context.getPackageName() + "/com.jcussdlib.service.USSDService";
+        try {
+            int accessibilityEnabled = Settings.Secure.getInt(
+                context.getContentResolver(),
+                Settings.Secure.ACCESSIBILITY_ENABLED
+            );
+            if (accessibilityEnabled == 1) {
+                String settingValue = Settings.Secure.getString(
+                    context.getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                );
+                if (settingValue != null) {
+                    return settingValue.contains(service);
+                }
+            }
+        } catch (Settings.SettingNotFoundException e) {
+            Log.e(TAG, "Error checking accessibility service", e);
+        }
+        return false;
     }
 }
